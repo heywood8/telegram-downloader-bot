@@ -20,8 +20,18 @@ from dotenv import load_dotenv
 from aiohttp import web
 import json
 
+# Load environment variables early
+load_dotenv('env/.env')
+
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 if log_level == 'NONE':
+    import sys
+    class NullWriter:
+        def write(self, *_): pass
+        def flush(self): pass
+    sys.stdout = NullWriter()
+    sys.stderr = NullWriter()
+    logging.basicConfig(level=logging.CRITICAL)
     logging.disable(logging.CRITICAL)
 else:
     logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
