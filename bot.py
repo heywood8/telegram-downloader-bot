@@ -12,6 +12,7 @@ import os
 import re
 import logging
 import asyncio
+import http.client
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -32,13 +33,71 @@ def check_instagram_link(text: str) -> bool:
     return bool(INSTAGRAM_RE.search(text or ""))
 
 
+def extract_reel_id(url: str) -> str:
+    """
+    Extract the reel ID from a given Instagram URL.
+
+    Args:
+        url (str): The Instagram URL containing the reel ID.
+
+    Returns:
+        str: The extracted reel ID, or an empty string if not found.
+    """
+    match = re.search(r"/reel/([\w-]+)/", url)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def get_bool_env(varname: str, default: bool = True) -> bool:
+    val = os.environ.get(varname)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "on")
+
+
+async def fetch_reel_data(reel_id: str, rapid_api_key: str) -> str:
+    """
+    Fetch reel data from RapidAPI using the provided reel ID.
+
+    Args:
+        reel_id (str): The Instagram reel ID.
+        rapid_api_key (str): The RapidAPI key for authentication.
+
+    Returns:
+        str: The response data from the API.
+    """
+    conn = http.client.HTTPSConnection("instagram120.p.rapidapi.com")
+
+    payload = json.dumps({"shortcode": reel_id})
+
+    headers = {
+        'x-rapidapi-key': rapid_api_key,
+        'x-rapidapi-host': "instagram120.p.rapidapi.com",
+        'Content-Type': "application/json"
+    }
+
+    conn.request("POST", "/api/instagram/mediaByShortcode", payload, headers)
+
+    res = conn.getresponse()
+    data = res.read()
+
+    return data.decode("utf-8")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "")
     try:
         if check_instagram_link(text):
             reel_id = extract_reel_id(text)
             if reel_id:
-                await update.message.reply_text(f"Your reel ID is {reel_id}")
+                rapid_api_key = os.environ.get('RAPID_API_KEY')
+                if not rapid_api_key:
+                    await update.message.reply_text("RapidAPI key is not configured.")
+                    return
+
+                api_response = await asyncio.to_thread(fetch_reel_data, reel_id, rapid_api_key)
+                await update.message.reply_text(f"API Response: {api_response}")
             else:
                 await update.message.reply_text("Reel ID not found")
             logger.info("Replied to Instagram link", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
@@ -72,29 +131,6 @@ async def http_update(request):
             reply = "Reel ID not found"
 
     return web.json_response({"reply": reply})
-
-
-def extract_reel_id(url: str) -> str:
-    """
-    Extract the reel ID from a given Instagram URL.
-
-    Args:
-        url (str): The Instagram URL containing the reel ID.
-
-    Returns:
-        str: The extracted reel ID, or an empty string if not found.
-    """
-    match = re.search(r"/reel/([\w-]+)/", url)
-    if match:
-        return match.group(1)
-    return ""
-
-
-def get_bool_env(varname: str, default: bool = True) -> bool:
-    val = os.environ.get(varname)
-    if val is None:
-        return default
-    return val.strip().lower() in ("1", "true", "yes", "on")
 
 
 def main() -> None:
