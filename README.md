@@ -63,3 +63,7 @@ Test with:
 ```bash
 curl -X POST http://localhost:8080/update -H "Content-Type: application/json" -d '{"message": "https://instagram.com/test"}'
 ```
+
+```bash
+curl -X POST http://localhost:8080/update -H "Content-Type: application/json" -d '{"message": "https://www.instagram.com/reel/DQ916NCAUtZ/\\?igsh\\=MTY1a3l1aXptMmxsZQ\\=\\="}'
+```
