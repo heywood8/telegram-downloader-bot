@@ -132,6 +132,7 @@ async def process_instagram_link(text: str) -> str:
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.info(f"Full update object: {update.to_dict()}")
     text = (update.message.text or "")
     logger.info(f"Received message: {text}", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
     try:
@@ -164,6 +165,29 @@ async def http_update(request):
     return web.json_response({"reply": reply})
 
 
+async def notify_admins_startup(application):
+    admin_ids = os.environ.get('ADMIN_USER_IDS', '').split(',')
+    if not admin_ids:
+        logger.info("No admin users configured, skipping startup notification")
+        return
+
+    startup_message = (
+        "🤖 *Bot Started*\n"
+        "The bot is now online and ready to accept messages."
+    )
+
+    for admin_id in admin_ids:
+        try:
+            await application.bot.send_message(
+                chat_id=admin_id.strip(),
+                text=startup_message,
+                parse_mode="Markdown"
+            )
+            logger.info(f"Sent startup notification to admin {admin_id}")
+        except Exception as e:
+            logger.warning(f"Failed to send startup notification to admin {admin_id}: {e}")
+
+
 def main() -> None:
     # Load environment variables from env/.env
     load_dotenv('env/.env')
@@ -184,8 +208,6 @@ def main() -> None:
     app = None
     if enable_telegram:
         app = Application.builder().token(token).build()
-        app.add_handler(CommandHandler('start', start))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     async def run_http_server():
         http_app = web.Application()
@@ -205,23 +227,33 @@ def main() -> None:
         await app.initialize()
         await app.start()
 
-        # Send startup notification (if needed)
+        # Notify admins on startup
+        await notify_admins_startup(app)
+
+        # Register handlers
+        app.add_handler(CommandHandler('start', start))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+        # Notify that the bot is running
         logger.info("Bot is running! Press Ctrl+C to stop.")
 
         # Keep the bot running until a shutdown signal is received
         stop_event = asyncio.Event()
 
-        # Call shutdown during signal handling
         def signal_handler(sig, frame):
             logger.info("Received shutdown signal")
-            # Force quit the application
-            logger.info("Forcing application exit.")
             os._exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
         await stop_event.wait()
+
+        # Shutdown logic
+        logger.info("Stopping the application...")
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
 
     async def run_all():
         tasks = []
