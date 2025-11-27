@@ -133,6 +133,7 @@ async def process_instagram_link(text: str) -> str:
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "")
+    logger.info(f"Received message: {text}", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
     try:
         reply = await process_instagram_link(text)
         await update.message.reply_text(reply)
@@ -210,20 +211,17 @@ def main() -> None:
         # Keep the bot running until a shutdown signal is received
         stop_event = asyncio.Event()
 
+        # Call shutdown during signal handling
         def signal_handler(sig, frame):
             logger.info("Received shutdown signal")
-            stop_event.set()
+            # Force quit the application
+            logger.info("Forcing application exit.")
+            os._exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
         await stop_event.wait()
-
-        # Shutdown logic
-        logger.info("Stopping the application...")
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
 
     async def run_all():
         tasks = []
