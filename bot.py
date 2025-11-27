@@ -45,8 +45,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # HTTP endpoint for testing
 async def http_update(request):
     try:
-        data = await request.json()
-        text = data.get("message", "")
+        try:
+            data = await request.json()
+        except Exception as e:
+            logger.warning(f"Invalid JSON in /update: {e}")
+            return web.json_response({"reply": "Invalid JSON"}, status=400)
+        text = data.get("message")
+        if not text:
+            logger.info("No 'message' field in /update request")
+            return web.json_response({"reply": "No message"}, status=400)
         logger.info(f"Received HTTP update: {text}")
         if check_instagram_link(text):
             reply = "Here you go"
