@@ -51,6 +51,8 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info('Starting Telegram downloader bot (polling)...')
+    bot_info = asyncio.run(app.bot.get_me())
+    logger.info(f"Bot username: {bot_info.username}, name: {bot_info.first_name}")
     try:
         app.run_polling(allowed_updates=["message", "edited_message"], drop_pending_updates=True)
     except KeyboardInterrupt:
