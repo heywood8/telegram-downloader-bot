@@ -13,6 +13,7 @@ import re
 import logging
 import asyncio
 import http.client
+import signal
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -165,7 +166,7 @@ async def http_update(request):
 def main() -> None:
     # Load environment variables from env/.env
     load_dotenv('env/.env')
-    
+
     enable_http = get_bool_env('ENABLE_HTTP_SERVER', True)
     enable_telegram = get_bool_env('ENABLE_TELEGRAM_POLLING', True)
 
@@ -201,7 +202,28 @@ def main() -> None:
         bot_info = await app.bot.get_me()
         logger.info(f"Bot username: {bot_info.username}, name: {bot_info.first_name}")
         await app.initialize()
-        app.run_polling(allowed_updates=["message", "edited_message"], drop_pending_updates=True)
+        await app.start()
+
+        # Send startup notification (if needed)
+        logger.info("Bot is running! Press Ctrl+C to stop.")
+
+        # Keep the bot running until a shutdown signal is received
+        stop_event = asyncio.Event()
+
+        def signal_handler(sig, frame):
+            logger.info("Received shutdown signal")
+            stop_event.set()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        await stop_event.wait()
+
+        # Shutdown logic
+        logger.info("Stopping the application...")
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
 
     async def run_all():
         tasks = []
@@ -212,10 +234,21 @@ def main() -> None:
         if not tasks:
             logger.error("Both HTTP server and Telegram polling are disabled. Nothing to run.")
             return
-        await asyncio.gather(*tasks)
+
+        try:
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            logger.exception("An error occurred while running tasks: %s", e)
+        finally:
+            logger.info("Shutting down all tasks.")
 
     try:
-        asyncio.run(run_all())
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            logger.warning("Event loop is already running. Using create_task instead of asyncio.run.")
+            loop.create_task(run_all())
+        else:
+            asyncio.run(run_all())
     except KeyboardInterrupt:
         logger.info('Shutting down')
 
