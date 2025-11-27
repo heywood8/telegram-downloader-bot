@@ -85,22 +85,41 @@ async def fetch_reel_data(reel_id: str, rapid_api_key: str) -> str:
     return data.decode("utf-8")
 
 
+def process_instagram_link(text: str) -> str:
+    """
+    Process an Instagram link to extract the reel ID and fetch data from RapidAPI.
+
+    Args:
+        text (str): The message text containing the Instagram link.
+
+    Returns:
+        str: The response message to be sent back.
+    """
+    rapid_api_key = os.environ.get('RAPID_API_KEY')
+    if not rapid_api_key:
+        return "RapidAPI key is not configured."
+
+    if not check_instagram_link(text):
+        return "No Instagram link detected"
+
+    reel_id = extract_reel_id(text)
+    if not reel_id:
+        return "Reel ID not found"
+
+    try:
+        api_response = fetch_reel_data(reel_id, rapid_api_key)
+        return f"API Response: {api_response}"
+    except Exception as e:
+        logger.exception("Error fetching data from RapidAPI: %s", e)
+        return "Error fetching data from RapidAPI"
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "")
     try:
-        if check_instagram_link(text):
-            reel_id = extract_reel_id(text)
-            if reel_id:
-                rapid_api_key = os.environ.get('RAPID_API_KEY')
-                if not rapid_api_key:
-                    await update.message.reply_text("RapidAPI key is not configured.")
-                    return
-
-                api_response = await asyncio.to_thread(fetch_reel_data, reel_id, rapid_api_key)
-                await update.message.reply_text(f"API Response: {api_response}")
-            else:
-                await update.message.reply_text("Reel ID not found")
-            logger.info("Replied to Instagram link", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
+        reply = process_instagram_link(text)
+        await update.message.reply_text(reply)
+        logger.info("Replied to Instagram link", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
     except Exception as e:
         logger.exception("Error in handle_message: %s", e)
 
@@ -114,7 +133,7 @@ async def http_update(request):
         return web.json_response({"reply": "Invalid JSON"}, status=400)
     except Exception as e:
         logger.exception("Unexpected error while parsing JSON: %s", e)
-        return web.json_response({"reply": "Error processing request"}, status=500)
+        return web.json_response({"reply": "Error while parsing JSON"}, status=500)
 
     text = data.get("message")
     if not text:
@@ -122,14 +141,8 @@ async def http_update(request):
         return web.json_response({"reply": "No message"}, status=422)
 
     logger.info(f"Received HTTP update: {text}")
-    reply = "No Instagram link detected"
-    if check_instagram_link(text):
-        reel_id = extract_reel_id(text)
-        if reel_id:
-            reply = f"Your reel ID is {reel_id}"
-        else:
-            reply = "Reel ID not found"
 
+    reply = process_instagram_link(text)
     return web.json_response({"reply": reply})
 
 
