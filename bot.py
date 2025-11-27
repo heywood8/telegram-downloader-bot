@@ -65,7 +65,7 @@ async def fetch_reel_data(reel_id: str, rapid_api_key: str) -> str:
         rapid_api_key (str): The RapidAPI key for authentication.
 
     Returns:
-        str: The response data from the API.
+        str: The extracted URL from the API response.
     """
     conn = http.client.HTTPSConnection("instagram120.p.rapidapi.com")
 
@@ -82,10 +82,26 @@ async def fetch_reel_data(reel_id: str, rapid_api_key: str) -> str:
     res = conn.getresponse()
     data = res.read()
 
-    return data.decode("utf-8")
+    try:
+        logger.debug(f"Raw API response: {data}")
+        response_json = json.loads(data)
+        logger.debug(f"Decoded JSON response: {response_json}")
+
+        # Directly access the first URL in the response structure
+        first_url = response_json[0]["urls"][0]["url"]
+        return first_url
+    except json.JSONDecodeError:
+        logger.error("Failed to decode JSON response from RapidAPI")
+        return "Error decoding API response"
+    except KeyError as e:
+        logger.exception("Missing expected key in API response: %s", e)
+        return "Error processing API response"
+    except Exception as e:
+        logger.exception("Unexpected error while processing API response: %s", e)
+        return "Error processing API response"
 
 
-def process_instagram_link(text: str) -> str:
+async def process_instagram_link(text: str) -> str:
     """
     Process an Instagram link to extract the reel ID and fetch data from RapidAPI.
 
@@ -107,8 +123,8 @@ def process_instagram_link(text: str) -> str:
         return "Reel ID not found"
 
     try:
-        api_response = fetch_reel_data(reel_id, rapid_api_key)
-        return f"API Response: {api_response}"
+        api_response = await fetch_reel_data(reel_id, rapid_api_key)
+        return f"Extracted URL: {api_response}"
     except Exception as e:
         logger.exception("Error fetching data from RapidAPI: %s", e)
         return "Error fetching data from RapidAPI"
@@ -117,7 +133,7 @@ def process_instagram_link(text: str) -> str:
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "")
     try:
-        reply = process_instagram_link(text)
+        reply = await process_instagram_link(text)
         await update.message.reply_text(reply)
         logger.info("Replied to Instagram link", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
     except Exception as e:
@@ -142,7 +158,7 @@ async def http_update(request):
 
     logger.info(f"Received HTTP update: {text}")
 
-    reply = process_instagram_link(text)
+    reply = await process_instagram_link(text)
     return web.json_response({"reply": reply})
 
 
