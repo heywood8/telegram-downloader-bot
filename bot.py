@@ -109,6 +109,11 @@ def main() -> None:
         logger.error('Environment variable TELEGRAM_BOT_TOKEN is not set')
         raise SystemExit('Set TELEGRAM_BOT_TOKEN and try again')
 
+    rapid_api_key = os.environ.get('RAPID_API_KEY')
+    if not rapid_api_key:
+        logger.error('Environment variable RAPID_API_KEY is not set')
+        raise SystemExit('Set RAPID_API_KEY and try again')
+
     app = None
     if enable_telegram:
         app = Application.builder().token(token).build()

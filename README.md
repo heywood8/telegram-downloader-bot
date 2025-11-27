@@ -39,6 +39,7 @@ You can enable/disable the HTTP test server and Telegram polling via environment
 ENABLE_HTTP_SERVER=true      # Enable HTTP server on port 8080 (default: true)
 ENABLE_TELEGRAM_POLLING=true # Enable Telegram polling (default: true)
 TELEGRAM_BOT_TOKEN=<your-token-here>
+RAPID_API_KEY=<your-rapid-api-key> # Required for accessing RapidAPI services
 ```
 
 - Set to `false`, `0`, or `no` to disable either feature.
