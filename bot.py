@@ -36,7 +36,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     text = (update.message.text or "")
     try:
         if check_instagram_link(text):
-            await update.message.reply_text("Here you go")
+            reel_id = extract_reel_id(text)
+            if reel_id:
+                await update.message.reply_text(f"Your reel ID is {reel_id}")
+            else:
+                await update.message.reply_text("Reel ID not found")
             logger.info("Replied to Instagram link", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
     except Exception as e:
         logger.exception("Error in handle_message: %s", e)
@@ -45,24 +49,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # HTTP endpoint for testing
 async def http_update(request):
     try:
-        try:
-            data = await request.json()
-        except Exception as e:
-            logger.warning(f"Invalid JSON in /update: {e}")
-            return web.json_response({"reply": "Invalid JSON"}, status=400)
-        text = data.get("message")
-        if not text:
-            logger.info("No 'message' field in /update request")
-            return web.json_response({"reply": "No message"}, status=400)
-        logger.info(f"Received HTTP update: {text}")
-        if check_instagram_link(text):
-            reply = "Here you go"
-        else:
-            reply = "No Instagram link detected"
-        return web.json_response({"reply": reply})
+        data = await request.json()
+    except json.JSONDecodeError as e:
+        logger.warning(f"Invalid JSON in /update: {e}")
+        return web.json_response({"reply": "Invalid JSON"}, status=400)
     except Exception as e:
-        logger.exception("Error in /update endpoint: %s", e)
-        return web.json_response({"error": str(e)}, status=400)
+        logger.exception("Unexpected error while parsing JSON: %s", e)
+        return web.json_response({"reply": "Error processing request"}, status=500)
+
+    text = data.get("message")
+    if not text:
+        logger.info("No 'message' field in /update request")
+        return web.json_response({"reply": "No message"}, status=422)
+
+    logger.info(f"Received HTTP update: {text}")
+    reply = "No Instagram link detected"
+    if check_instagram_link(text):
+        reel_id = extract_reel_id(text)
+        if reel_id:
+            reply = f"Your reel ID is {reel_id}"
+        else:
+            reply = "Reel ID not found"
+
+    return web.json_response({"reply": reply})
+
+
+def extract_reel_id(url: str) -> str:
+    """
+    Extract the reel ID from a given Instagram URL.
+
+    Args:
+        url (str): The Instagram URL containing the reel ID.
+
+    Returns:
+        str: The extracted reel ID, or an empty string if not found.
+    """
+    match = re.search(r"/reel/([\w-]+)/", url)
+    if match:
+        return match.group(1)
+    return ""
 
 
 def get_bool_env(varname: str, default: bool = True) -> bool:
