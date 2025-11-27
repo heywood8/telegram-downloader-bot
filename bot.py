@@ -20,7 +20,11 @@ from dotenv import load_dotenv
 from aiohttp import web
 import json
 
-logging.basicConfig(level=logging.INFO)
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+if log_level == 'NONE':
+    logging.disable(logging.CRITICAL)
+else:
+    logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
 logger = logging.getLogger(__name__)
 
 INSTAGRAM_RE = re.compile(r'(?:(?:https?://)?(?:www\.)?(?:instagram\.com|instagr\.am)/\S+)', flags=re.IGNORECASE)
@@ -117,7 +121,8 @@ async def process_instagram_link(text: str) -> str:
         return "RapidAPI key is not configured."
 
     if not check_instagram_link(text):
-        return "No Instagram link detected"
+        logger.info(f"Received non-Instagram message: {text}")
+        return None
 
     reel_id = extract_reel_id(text)
     if not reel_id:
@@ -125,7 +130,8 @@ async def process_instagram_link(text: str) -> str:
 
     try:
         api_response = await fetch_reel_data(reel_id, rapid_api_key)
-        return f"Extracted URL: {api_response}"
+        # Reply with "Here you go" and mark as link
+        return f"[Here you go]({api_response})"
     except Exception as e:
         logger.exception("Error fetching data from RapidAPI: %s", e)
         return "Error fetching data from RapidAPI"
@@ -137,8 +143,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     logger.info(f"Received message: {text}", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
     try:
         reply = await process_instagram_link(text)
-        await update.message.reply_text(reply)
-        logger.info("Replied to Instagram link", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
+        if reply:
+            await update.message.reply_text(reply, parse_mode="Markdown")
+            logger.info("Replied to Instagram link", extra={"chat_id": update.effective_chat.id, "user": getattr(update.effective_user, 'username', None)})
     except Exception as e:
         logger.exception("Error in handle_message: %s", e)
 
@@ -208,6 +215,8 @@ def main() -> None:
     app = None
     if enable_telegram:
         app = Application.builder().token(token).build()
+        app.add_handler(CommandHandler('start', start))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     async def run_http_server():
         http_app = web.Application()
@@ -230,12 +239,8 @@ def main() -> None:
         # Notify admins on startup
         await notify_admins_startup(app)
 
-        # Register handlers
-        app.add_handler(CommandHandler('start', start))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-        # Notify that the bot is running
         logger.info("Bot is running! Press Ctrl+C to stop.")
+        await app.updater.start_polling()
 
         # Keep the bot running until a shutdown signal is received
         stop_event = asyncio.Event()
