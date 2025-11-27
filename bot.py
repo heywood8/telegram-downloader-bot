@@ -14,6 +14,7 @@ import logging
 import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,6 +37,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 def main() -> None:
+    # Load environment variables from env/.env
+    load_dotenv('env/.env')
+    
     token = os.environ.get('TELEGRAM_BOT_TOKEN')
     if not token:
         logger.error('Environment variable TELEGRAM_BOT_TOKEN is not set')
